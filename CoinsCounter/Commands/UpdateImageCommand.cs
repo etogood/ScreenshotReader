@@ -1,11 +1,12 @@
 ﻿using CoinsCounter.Commands.Base;
 using CoinsCounter.ViewModels;
-using IronOcr;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Drawing;
 using System.IO;
 using System.Windows;
+using Tesseract;
+using System.Windows.Forms;
+using System.Drawing;
 using System.Windows.Media.Imaging;
 
 namespace CoinsCounter.Commands
@@ -21,20 +22,23 @@ namespace CoinsCounter.Commands
 
         public override void Execute(object? parameter) 
         { 
-            var image = Clipboard.GetImage();
-
             _host.Services.GetRequiredService<MainWindowViewModel>().CurrentImage = Clipboard.GetImage();
 
-            Bitmap bitmap;
-            using (var outStream = new MemoryStream())
+            byte[] data;
+            JpegBitmapEncoder encoder = new();
+            encoder.Frames.Add(BitmapFrame.Create(Clipboard.GetImage()));
+            using (MemoryStream ms = new())
             {
-                BitmapEncoder enc = new BmpBitmapEncoder();
-                enc.Frames.Add(BitmapFrame.Create(image));
-                enc.Save(outStream);
-                bitmap = new Bitmap(outStream);
+                encoder.Save(ms);
+                data = ms.ToArray();
             }
 
-            _host.Services.GetRequiredService<MainWindowViewModel>().ImageText = new IronTesseract().Read(bitmap).Text;
+            using var engine = new TesseractEngine(@"./tessdata", "Latin", EngineMode.Default);
+            using var img = Pix.LoadFromMemory(data);
+            using var page = engine.Process(img);
+            var text = page.GetText();
+
+            _host.Services.GetRequiredService<MainWindowViewModel>().ImageText = text;
         }
     }
 }
